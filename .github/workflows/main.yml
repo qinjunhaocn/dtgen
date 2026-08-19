@@ -1,7 +1,12 @@
-name: Generate Device Tree from Latest Release Image
+name: Generate Device Tree from User-Provided IMG
 
 on:
-  workflow_dispatch:   # 仅手动触发
+  workflow_dispatch:
+    inputs:
+      image_url:
+        description: '直接下载链接（IMG 镜像文件直链）'
+        required: true
+        type: string
 
 jobs:
   generate:
@@ -21,25 +26,19 @@ jobs:
           sudo apt install -y unzip file
           pip install twrpdtgen
 
-      - name: Get latest release image
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download IMG from user URL
         run: |
-          # 获取最新 Release 的所有 asset 名称
-          assets=$(gh release view --json assets -q '.assets[].name')
-          # 找到第一个 .img 文件（不区分大小写）
-          img_file=$(echo "$assets" | grep -i '\.img$' | head -n1)
-          if [ -z "$img_file" ]; then
-            echo "::error::No .img file found in the latest release."
-            exit 1
-          fi
-          echo "Found image: $img_file"
-          gh release download "$img_file" --pattern "$img_file"
-          echo "IMAGE_NAME=$img_file" >> $GITHUB_ENV
+          URL="${{ github.event.inputs.image_url }}"
+          echo "Downloading from $URL"
+          # 下载并保存为 image.img
+          curl -L -o image.img "$URL"
+          # 验证文件类型（可选）
+          file image.img
+          echo "IMAGE_PATH=image.img" >> $GITHUB_ENV
 
       - name: Generate device tree
         run: |
-          python3 -m twrpdtgen "${{ env.IMAGE_NAME }}"
+          python3 -m twrpdtgen "${{ env.IMAGE_PATH }}"
 
       - name: Upload device tree artifact
         uses: actions/upload-artifact@v4
