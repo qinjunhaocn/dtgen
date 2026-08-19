@@ -1,1 +1,48 @@
+name: Generate Device Tree from Latest Release Image
 
+on:
+  workflow_dispatch:   # 仅手动触发
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y unzip file
+          pip install twrpdtgen
+
+      - name: Get latest release image
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 获取最新 Release 的所有 asset 名称
+          assets=$(gh release view --json assets -q '.assets[].name')
+          # 找到第一个 .img 文件（不区分大小写）
+          img_file=$(echo "$assets" | grep -i '\.img$' | head -n1)
+          if [ -z "$img_file" ]; then
+            echo "::error::No .img file found in the latest release."
+            exit 1
+          fi
+          echo "Found image: $img_file"
+          gh release download "$img_file" --pattern "$img_file"
+          echo "IMAGE_NAME=$img_file" >> $GITHUB_ENV
+
+      - name: Generate device tree
+        run: |
+          python3 -m twrpdtgen "${{ env.IMAGE_NAME }}"
+
+      - name: Upload device tree artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: device-tree
+          path: output/
